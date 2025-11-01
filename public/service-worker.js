@@ -1,23 +1,21 @@
 /* ============================================================
    🚀 Sales Tracker PWA Service Worker
-   Provides offline caching and app shell support
-   Author: Ashish Kumar
+   Provides offline caching, app shell support, and fallback page
 ============================================================ */
 
-const CACHE_NAME = "sales-tracker-cache-v1";
-
-// ✅ Add important URLs to cache for offline use
+const CACHE_NAME = "sales-tracker-cache-v2";
 const URLS_TO_CACHE = [
   "/",
   "/index.html",
   "/manifest.json",
+  "/offline.html",
   "/icons/icon-192.png",
   "/icons/icon-512.png",
 ];
 
-// 📦 Install service worker and pre-cache assets
+// Install: Cache core files
 self.addEventListener("install", (event) => {
-  console.log("📥 Service Worker: Installing and caching app shell...");
+  console.log("📦 Installing Service Worker...");
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       return cache.addAll(URLS_TO_CACHE);
@@ -26,57 +24,45 @@ self.addEventListener("install", (event) => {
   self.skipWaiting();
 });
 
-// ♻️ Activate and clean old caches
+// Activate: Remove old cache versions
 self.addEventListener("activate", (event) => {
-  console.log("✅ Service Worker: Activated");
+  console.log("✅ Service Worker activated");
   event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
+    caches.keys().then((cacheNames) =>
+      Promise.all(
         cacheNames.map((name) => {
           if (name !== CACHE_NAME) {
-            console.log("🧹 Removing old cache:", name);
+            console.log("🗑️ Removing old cache:", name);
             return caches.delete(name);
           }
         })
-      );
-    })
+      )
+    )
   );
   self.clients.claim();
 });
 
-// 🌐 Fetch handler — serves from cache first, then network
+// Fetch: Serve cached content or fallback to network
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
 
   event.respondWith(
-    caches.match(event.request).then((cachedResponse) => {
-      // If found in cache → return cached response
-      if (cachedResponse) {
-        return cachedResponse;
-      }
+    caches.match(event.request).then((cached) => {
+      if (cached) return cached;
 
-      // Else → fetch from network and cache dynamically
       return fetch(event.request)
-        .then((networkResponse) => {
-          if (!networkResponse || networkResponse.status !== 200) {
-            return networkResponse;
-          }
-
-          const clonedResponse = networkResponse.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, clonedResponse);
-          });
-
-          return networkResponse;
+        .then((response) => {
+          if (!response || response.status !== 200) return response;
+          const cloned = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, cloned));
+          return response;
         })
         .catch(() => {
-          // 📴 Offline fallback (optional)
+          // 📴 Offline fallback
           if (event.request.destination === "document") {
-            return caches.match("/index.html");
+            return caches.match("/offline.html");
           }
         });
     })
   );
 });
-
-// 🔔 Optional: Background sync / push notifications can be added here
